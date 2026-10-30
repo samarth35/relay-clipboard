@@ -452,6 +452,7 @@ const GlassSurface = ({
   };
 
   useEffect(() => {
+    if (!refraction) return;
     updateDisplacementMap();
     [
       { ref: redChannelRef, offset: redOffset },
@@ -467,6 +468,7 @@ const GlassSurface = ({
 
     gaussianBlurRef.current?.setAttribute('stdDeviation', displace.toString());
   }, [
+    refraction,
     boxSize,
     width,
     height,
@@ -486,7 +488,7 @@ const GlassSurface = ({
   ]);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !refraction) return;
 
     const resizeObserver = new ResizeObserver(() => {
       const element = containerRef.current;
@@ -498,7 +500,7 @@ const GlassSurface = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [refraction]);
 
   useEffect(() => {
     if (!shape) return undefined;
@@ -517,6 +519,7 @@ const GlassSurface = ({
   const shapeImage = shape && loaded.src === shape ? loaded.image : null;
 
   useEffect(() => {
+    if (!refraction) return;
     const element = containerRef.current;
     const w = element?.offsetWidth || 0;
     const h = element?.offsetHeight || 0;
@@ -540,7 +543,7 @@ const GlassSurface = ({
     updateDisplacementMap();
     if (shape && trace) setArt({ src: shape, box: trace.box, line: trace.line, glow: trace.glow });
     else if (shape && loaded.src === shape) setArt({ src: shape, failed: true });
-  }, [shape, loaded, boxSize, borderWidth, blur, opacity, brightness]);
+  }, [refraction, shape, loaded, boxSize, borderWidth, blur, opacity, brightness]);
 
   useEffect(() => {
     setSvgSupported(supportsSVGFilters());
@@ -826,7 +829,7 @@ const GlassSurface = ({
       className={`glass-surface ${webgl ? 'glass-surface--webgl' : refractive ? 'glass-surface--svg' : 'glass-surface--fallback'} ${className}`}
       style={containerStyle}
     >
-      <svg className="glass-surface__filter" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      {refraction && <svg className="glass-surface__filter" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
         <defs>
           <filter id={filterId} colorInterpolationFilters="sRGB" x="0%" y="0%" width="100%" height="100%">
             <feImage ref={feImageRef} x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map" />
@@ -875,7 +878,7 @@ const GlassSurface = ({
             <feGaussianBlur ref={gaussianBlurRef} in="output" stdDeviation="0.7" />
           </filter>
         </defs>
-      </svg>
+      </svg>}
 
       {webgl && <canvas ref={canvasRef} className="glass-surface__canvas" aria-hidden="true" />}
       {webgl && (

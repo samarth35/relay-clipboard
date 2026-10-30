@@ -46,7 +46,7 @@ test("two isolated devices exchange encrypted snippets, code, and pad updates", 
   await other.goto(url);
   await expect(other.getByText("Connected", { exact: true })).toBeVisible();
   const text = '<script>window.__relay_xss = true</script>\nHello from device one 👋';
-  await page.getByRole("textbox", { name: "Snippet text", exact: true }).fill(text);
+  await page.getByRole("textbox", { name: "Snippet text", exact: true }).pressSequentially(text, { delay: 2 });
   await page.getByRole("button", { name: "Send snippet" }).click();
   await expect(page.getByRole("textbox", { name: "Snippet text", exact: true })).toHaveValue("");
   await expect(other.locator(".snippet-body pre")).toContainText(text);

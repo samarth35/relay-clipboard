@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeftRight, ArrowUpRight, Check, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { GlassControl } from "./surface";
 
 export function Shell({ children }: { children: ReactNode }) {
   const [help, setHelp] = useState(false);
@@ -51,10 +52,11 @@ export function CopyButton({ text, label, compact = false, disabled = false }: {
       timer.current = setTimeout(() => setCopied(false), 1800);
     } catch { setFallback(true); }
   }
-  return <>
-    <button className={compact ? "icon-button" : "button button-glass copy-room-button"} onClick={() => void copy()} disabled={disabled} aria-label={copied ? "Copied" : label} title={label}>
+  const button = <button className={compact ? "icon-button" : "button button-glass copy-room-button"} onClick={() => void copy()} disabled={disabled} aria-label={copied ? "Copied" : label} title={label}>
       {copied ? <Check size={17} /> : <Copy size={17} />}{!compact && <span>{copied ? "Copied" : label}</span>}
-    </button>
+    </button>;
+  return <>
+    {compact ? button : <GlassControl stretch>{button}</GlassControl>}
     {fallback && <Modal title="Copy manually" onClose={() => setFallback(false)}><p className="muted">Select the text and use your device’s copy action.</p><textarea className="manual-copy" readOnly value={text} aria-label="Text to copy" onFocus={(event) => event.currentTarget.select()} autoFocus /></Modal>}
   </>;
 }

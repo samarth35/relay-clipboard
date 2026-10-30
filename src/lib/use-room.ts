@@ -19,6 +19,8 @@ export function useRoom(id: string) {
   const [pad, setPad] = useState<PadModel>({ text: "", base: 0, dirty: false, saving: false, conflict: null });
   const model = useRef(pad);
   const revision = useRef(-1);
+  const confirmedRevision = useRef(0);
+  const decrypted = useRef(new Map<string, { envelope: RoomSnapshot["snippets"][string]["envelope"]; item: Snippet }>());
   const loading = useRef(false);
   const mounted = useRef(false);
   const failures = useRef(0);
@@ -50,16 +52,26 @@ export function useRoom(id: string) {
       setConnection("connected");
       if (transientError.current) { setError(""); transientError.current = false; }
       if ("unchanged" in result) return;
-      if (result.revision < revision.current) return;
+      if (result.revision < Math.max(revision.current, confirmedRevision.current)) return;
+      const nextCache = new Map<string, { envelope: RoomSnapshot["snippets"][string]["envelope"]; item: Snippet }>();
       const [nextSnippets, padText] = await Promise.all([
         Promise.all(Object.values(result.snippets).map(async (item): Promise<Snippet> => {
-          try { return { id: item.id, createdAt: item.createdAt, text: await decrypt(item.envelope, secret.key, context(id, "snippet", item.id)), broken: false }; }
-          catch { return { id: item.id, createdAt: item.createdAt, text: "Could not decrypt this snippet.", broken: true }; }
+          const cached = decrypted.current.get(item.id);
+          if (cached && cached.envelope.v === item.envelope.v && cached.envelope.iv === item.envelope.iv && cached.envelope.ciphertext === item.envelope.ciphertext && cached.item.createdAt === item.createdAt) {
+            nextCache.set(item.id, cached);
+            return cached.item;
+          }
+          let plain: Snippet;
+          try { plain = { id: item.id, createdAt: item.createdAt, text: await decrypt(item.envelope, secret.key, context(id, "snippet", item.id)), broken: false }; }
+          catch { plain = { id: item.id, createdAt: item.createdAt, text: "Could not decrypt this snippet.", broken: true }; }
+          nextCache.set(item.id, { envelope: item.envelope, item: plain });
+          return plain;
         })),
         result.pad ? decrypt(result.pad, secret.key, context(id, "pad", result.padRevision)) : Promise.resolve(""),
       ]);
-      if (!mounted.current || result.revision < revision.current) return;
+      if (!mounted.current || result.revision < Math.max(revision.current, confirmedRevision.current)) return;
       revision.current = result.revision;
+      decrypted.current = nextCache;
       setRoom(result);
       setSnippets(nextSnippets.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id)));
       const current = model.current;
@@ -127,9 +139,11 @@ export function useRoom(id: string) {
         pending.current = { text, id: snippetId, envelope: await encrypt(text, secret.key, context(id, "snippet", snippetId)) };
       }
       const item = pending.current;
-      await api(`/${id}/snippets`, secret.token, "POST", { id: item.id, envelope: item.envelope });
+      const saved = await api<{ revision: number }>(`/${id}/snippets`, secret.token, "POST", { id: item.id, envelope: item.envelope });
+      confirmedRevision.current = Math.max(confirmedRevision.current, saved.revision);
+      if (mounted.current) setSnippets((previous) => [{ id: item.id, text, createdAt: Date.now(), broken: false }, ...previous.filter((entry) => entry.id !== item.id)]);
       pending.current = null;
-      await refresh(true);
+      void refresh(true);
       return true;
     } catch (reason) { report(reason); return false; }
     finally { sending.current = false; if (mounted.current) setSendBusy(false); }
@@ -145,7 +159,8 @@ export function useRoom(id: string) {
     setError("");
     try {
       const envelope = await encrypt(text, secret.key, context(id, "pad", base + 1));
-      const result = await api<{ padRevision: number }>(`/${id}/pad`, secret.token, "PUT", { expectedRevision: base, envelope });
+      const result = await api<{ padRevision: number; revision: number }>(`/${id}/pad`, secret.token, "PUT", { expectedRevision: base, envelope });
+      confirmedRevision.current = Math.max(confirmedRevision.current, result.revision);
       current.base = result.padRevision;
       current.dirty = current.text !== text;
     } catch (reason) { report(reason); }
@@ -175,11 +190,17 @@ export function useRoom(id: string) {
     setError("");
     publish();
   };
-  const removeSnippet = async (snippetId: string) => {
+  const removeSnippet = useCallback(async (snippetId: string) => {
     if (!secretRef.current) return;
-    try { await api(`/${id}/snippets/${snippetId}`, secretRef.current.token, "DELETE"); await refresh(true); }
+    try {
+      const saved = await api<{ revision: number }>(`/${id}/snippets/${snippetId}`, secretRef.current.token, "DELETE");
+      confirmedRevision.current = Math.max(confirmedRevision.current, saved.revision);
+      decrypted.current.delete(snippetId);
+      if (mounted.current) setSnippets((previous) => previous.filter((item) => item.id !== snippetId));
+      void refresh(true);
+    }
     catch (reason) { report(reason); }
-  };
+  }, [id, refresh, report]);
   const deleteRoom = async () => {
     if (!secretRef.current) return false;
     try { await api(`/${id}`, secretRef.current.token, "DELETE"); return true; }
