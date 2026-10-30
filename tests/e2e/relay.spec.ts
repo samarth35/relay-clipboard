@@ -54,6 +54,11 @@ test("two isolated devices exchange encrypted snippets, code, and pad updates", 
   await other.getByRole("textbox", { name: "Snippet text", exact: true }).fill("const message = 'See you there.';");
   await other.getByRole("textbox", { name: "Snippet text", exact: true }).press("Control+Enter");
   await expect(page.locator(".snippet-body pre").first()).toContainText("const message");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy snippet", exact: true }).first().click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("const message = 'See you there.';");
+  await page.getByRole("button", { name: "Copy room link", exact: true }).first().click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url);
   await page.getByRole("tab", { name: "Shared pad" }).click();
   await other.getByRole("tab", { name: "Shared pad" }).click();
   await page.getByRole("textbox", { name: "Shared pad", exact: true }).fill("Shared note from device one");

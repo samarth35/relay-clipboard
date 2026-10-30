@@ -2,6 +2,8 @@
 
 A private space between your devices. Move text, links, and code through end-to-end encrypted rooms. No accounts.
 
+[Open Relay](https://relay-clipboard-phi.vercel.app)
+
 ## Features
 
 - Snippet history and a shared pad with autosave and conflict protection.
