@@ -1,0 +1,51 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
+      UPSTASH_REDIS_REST_URL: http://127.0.0.1:8079
+      UPSTASH_REDIS_REST_TOKEN: isolated-ci-token
+      LOCAL_REDIS_TOKEN: isolated-ci-token
+      RATE_LIMIT_SALT: isolated-ci-salt-not-used-in-production
+      REDIS_NAMESPACE: relay:ci
+      NEXT_TELEMETRY_DISABLED: "1"
+      RELAY_BASE_URL: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npx playwright install --with-deps chromium
+      - name: Start isolated services
+        run: |
+          node scripts/redis-rest.mjs > /tmp/relay-redis-rest.log 2>&1 &
+          npm run start -- --port 3001 > /tmp/relay-next.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3001 > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/relay-next.log
+          exit 1
+      - run: npm run test:e2e
